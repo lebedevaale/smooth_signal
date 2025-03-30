@@ -1,0 +1,23 @@
+[project]
+name = "smooth-signal"
+version = "0.2"
+description = "Denoisers for the time series based on the empirical mode decomposition, Savitzky–Golay filter and wavelet transform"
+authors = [
+    {name = "Lebedev Andrey",email = "lebedev.aale@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy (>=1.16)",
+    "plotly (>=6.0.1,<7.0.0)",
+    "pyemd (>=1.0.0,<2.0.0)",
+    "pywavelets (>=1.8.0,<2.0.0)",
+    "scipy (>=1.15.2,<2.0.0)",
+    "sklearn (>=0.0.post12,<0.1)",
+    "statsmodels (>=0.14.4,<0.15.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

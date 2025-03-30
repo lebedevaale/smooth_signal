@@ -6,16 +6,16 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # Decomposition and scoring libraries
-from PyEMD import EMD
+from PyEMD import EMD # pip install EMD-signal
 
 import pywt
 
 from scipy.fft import fft
 from scipy.signal import savgol_filter as sgf
 
-from filterpy.common import Saver
-from filterpy.kalman import KalmanFilter as kf
-from filterpy.common import Q_discrete_white_noise
+# from filterpy.common import Saver
+# from filterpy.kalman import KalmanFilter as kf
+# from filterpy.common import Q_discrete_white_noise
 
 from sklearn.feature_selection import mutual_info_regression
 from sklearn.metrics import mean_absolute_percentage_error as mape
@@ -311,85 +311,6 @@ def sav_gol_wrapper(signal:np.array,
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
-def kalman_wrapper(signal:np.array,
-                   t:np.array,
-                   dt:float = 1,
-                   measurement_noise:float = 1,
-                   process_noise:float = 0.05,
-                   plot_components:bool = False) -> tuple:
-    """
-    Wrapper function for the second orderKalman filter
-    Source: https://github.com/rlabbe/Kalman-and-Bayesian-Filters-in-Python/blob/master/08-Designing-Kalman-Filters.ipynb
-
-    Inputs
-    ----------
-    signal : array
-        Time series for decomposition
-    t : array
-        Index of time series for plotting
-    plot_components : bool = False
-        Flag whether the plot of the original, stochastic and deterministic time series is needed
-
-    Returns
-    ----------
-    stochastic_component : array
-        Stochastic component of the time series
-    deterministic_component : array
-        Deterministic component of the time series
-    """
-
-    def SecondOrderKF(R_std:float,
-                      Q:float,
-                      dt:int = 1,
-                      P = 10):
-        """ Create second order Kalman filter."""
-        
-        # Create filter
-        filter = kf(dim_x = 3, dim_z = 1)
-        
-        # Current state
-        filter.x = np.zeros(3)
-
-        # Covariance matrix
-        filter.P[0, 0] = P
-        filter.P[1, 1] = 1
-        filter.P[2, 2] = 1
-
-        # Measurement noise
-        filter.R *= R_std**2
-
-        # Process noise
-        filter.Q = Q_discrete_white_noise(3, dt, Q)
-
-        # State transition matrix
-        filter.F = np.array([[1., dt, .5*dt*dt],
-                            [0., 1.,       dt],
-                            [0., 0.,       1.]])
-        
-        # Measurement function
-        filter.H = np.array([[1., 0., 0.]])
-
-        return filter
-    
-    def filter_data(filter, zs):
-        s = Saver(filter)
-        filter.batch_filter(zs, saver = s)
-        s.to_array()
-        return s
-
-    # Apply Kalman filter
-    kf2 = SecondOrderKF(measurement_noise, process_noise, dt = dt)
-    deterministic_component = filter_data(kf2, signal)
-    stohastic_component = signal - deterministic_component
-
-    # Plot components if needed
-    if plot_components == True:
-        __plot_components__(signal, t, stohastic_component, deterministic_component)
-
-    return stohastic_component, deterministic_component
-
-#---------------------------------------------------------------------------------------------------------------------------------------
-
 def wavelet_wrapper(signal:np.array,
                     t:np.array,
                     wavelet_type:str = 'haar',
@@ -481,3 +402,82 @@ def wavelet_wrapper(signal:np.array,
         __plot_components__(signal, t, stohastic_component, deterministic_component)
 
     return stohastic_component, deterministic_component
+
+#---------------------------------------------------------------------------------------------------------------------------------------
+
+# def kalman_wrapper(signal:np.array,
+#                    t:np.array,
+#                    dt:float = 1,
+#                    measurement_noise:float = 1,
+#                    process_noise:float = 0.05,
+#                    plot_components:bool = False) -> tuple:
+#     """
+#     Wrapper function for the second orderKalman filter
+#     Source: https://github.com/rlabbe/Kalman-and-Bayesian-Filters-in-Python/blob/master/08-Designing-Kalman-Filters.ipynb
+
+#     Inputs
+#     ----------
+#     signal : array
+#         Time series for decomposition
+#     t : array
+#         Index of time series for plotting
+#     plot_components : bool = False
+#         Flag whether the plot of the original, stochastic and deterministic time series is needed
+
+#     Returns
+#     ----------
+#     stochastic_component : array
+#         Stochastic component of the time series
+#     deterministic_component : array
+#         Deterministic component of the time series
+#     """
+
+#     def SecondOrderKF(R_std:float,
+#                       Q:float,
+#                       dt:int = 1,
+#                       P = 10):
+#         """ Create second order Kalman filter."""
+        
+#         # Create filter
+#         filter = kf(dim_x = 3, dim_z = 1)
+        
+#         # Current state
+#         filter.x = np.zeros(3)
+
+#         # Covariance matrix
+#         filter.P[0, 0] = P
+#         filter.P[1, 1] = 1
+#         filter.P[2, 2] = 1
+
+#         # Measurement noise
+#         filter.R *= R_std**2
+
+#         # Process noise
+#         filter.Q = Q_discrete_white_noise(3, dt, Q)
+
+#         # State transition matrix
+#         filter.F = np.array([[1., dt, .5*dt*dt],
+#                             [0., 1.,       dt],
+#                             [0., 0.,       1.]])
+        
+#         # Measurement function
+#         filter.H = np.array([[1., 0., 0.]])
+
+#         return filter
+    
+#     def filter_data(filter, zs):
+#         s = Saver(filter)
+#         filter.batch_filter(zs, saver = s)
+#         s.to_array()
+#         return s
+
+#     # Apply Kalman filter
+#     kf2 = SecondOrderKF(measurement_noise, process_noise, dt = dt)
+#     deterministic_component = filter_data(kf2, signal)
+#     stohastic_component = signal - deterministic_component
+
+#     # Plot components if needed
+#     if plot_components == True:
+#         __plot_components__(signal, t, stohastic_component, deterministic_component)
+
+#     return stohastic_component, deterministic_component
