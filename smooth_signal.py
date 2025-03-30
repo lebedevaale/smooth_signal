@@ -7,9 +7,22 @@ from plotly.subplots import make_subplots
 
 # Decomposition and scoring libraries
 from PyEMD import EMD
+
+import pywt
+
 from scipy.fft import fft
+from scipy.signal import savgol_filter as sgf
+
+from filterpy.common import Saver
+from filterpy.kalman import KalmanFilter as kf
+from filterpy.common import Q_discrete_white_noise
+
 from sklearn.feature_selection import mutual_info_regression
 from sklearn.metrics import mean_absolute_percentage_error as mape
+
+from statsmodels.tsa.stattools import adfuller
+
+#---------------------------------------------------------------------------------------------------------------------------------------
 
 def __plot_components__(signal:np.array,
                         t:np.array,
@@ -222,6 +235,7 @@ def emd_wrapper(signal:np.array,
     # Calculated the final separation
     stochastic_component, deterministic_component = __divide_signal__(signal, t, imfs, mis, cutoff = best_cut, plot = plot_components)
  
+    # Combined plotting of the signals and components
     if plot_signals == True:
         # Creating grid of subplots
         if combine_plots == True:
@@ -256,3 +270,214 @@ def emd_wrapper(signal:np.array,
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
+def sav_gol_wrapper(signal:np.array,
+                    t:np.array, 
+                    window_width:int = 15,
+                    window_polynomial:int = 2,
+                    plot_components:bool = False) -> tuple:
+    """
+    Wrapper function for the Savitzky-Golay filter
+
+    Inputs
+    ----------
+    signal : array
+        Time series for decomposition
+    t : array
+        Index of time series for plotting
+    window_width : int = 15
+        Window width of the Savitzky-Golay filter
+    window_polynomial : int = 2
+        Polynomial order of the Savitzky-Golay filter
+    plot_components : bool = False
+        Flag whether the plot of the original, stochastic and deterministic time series is needed
+
+    Returns
+    ----------
+    stochastic_component : array
+        Stochastic component of the time series
+    deterministic_component : array
+        Deterministic component of the time series
+    """
+
+    # Apply Savitzky-Golay filter
+    deterministic_component = sgf(signal, window_length = window_width, polyorder = window_polynomial)
+    stohastic_component = signal - deterministic_component
+
+    # Plot components if needed
+    if plot_components == True:
+        __plot_components__(signal, t, stohastic_component, deterministic_component)
+
+    return stohastic_component, deterministic_component
+
+#---------------------------------------------------------------------------------------------------------------------------------------
+
+def kalman_wrapper(signal:np.array,
+                   t:np.array,
+                   dt:float = 1,
+                   measurement_noise:float = 1,
+                   process_noise:float = 0.05,
+                   plot_components:bool = False) -> tuple:
+    """
+    Wrapper function for the second orderKalman filter
+    Source: https://github.com/rlabbe/Kalman-and-Bayesian-Filters-in-Python/blob/master/08-Designing-Kalman-Filters.ipynb
+
+    Inputs
+    ----------
+    signal : array
+        Time series for decomposition
+    t : array
+        Index of time series for plotting
+    plot_components : bool = False
+        Flag whether the plot of the original, stochastic and deterministic time series is needed
+
+    Returns
+    ----------
+    stochastic_component : array
+        Stochastic component of the time series
+    deterministic_component : array
+        Deterministic component of the time series
+    """
+
+    def SecondOrderKF(R_std:float,
+                      Q:float,
+                      dt:int = 1,
+                      P = 10):
+        """ Create second order Kalman filter."""
+        
+        # Create filter
+        filter = kf(dim_x = 3, dim_z = 1)
+        
+        # Current state
+        filter.x = np.zeros(3)
+
+        # Covariance matrix
+        filter.P[0, 0] = P
+        filter.P[1, 1] = 1
+        filter.P[2, 2] = 1
+
+        # Measurement noise
+        filter.R *= R_std**2
+
+        # Process noise
+        filter.Q = Q_discrete_white_noise(3, dt, Q)
+
+        # State transition matrix
+        filter.F = np.array([[1., dt, .5*dt*dt],
+                            [0., 1.,       dt],
+                            [0., 0.,       1.]])
+        
+        # Measurement function
+        filter.H = np.array([[1., 0., 0.]])
+
+        return filter
+    
+    def filter_data(filter, zs):
+        s = Saver(filter)
+        filter.batch_filter(zs, saver = s)
+        s.to_array()
+        return s
+
+    # Apply Kalman filter
+    kf2 = SecondOrderKF(measurement_noise, process_noise, dt = dt)
+    deterministic_component = filter_data(kf2, signal)
+    stohastic_component = signal - deterministic_component
+
+    # Plot components if needed
+    if plot_components == True:
+        __plot_components__(signal, t, stohastic_component, deterministic_component)
+
+    return stohastic_component, deterministic_component
+
+#---------------------------------------------------------------------------------------------------------------------------------------
+
+def wavelet_wrapper(signal:np.array,
+                    t:np.array,
+                    wavelet_type:str = 'haar',
+                    sigma:float = 0.6,
+                    plot_components:bool = False) -> tuple:
+    """
+    Wrapper function for the wavelet decomposition
+    Source: https://github.com/CSchoel/learn-wavelets/blob/main/wavelet-denoising.ipynb
+
+    Inputs
+    ----------
+    signal : array
+        Time series for decomposition
+    t : array
+        Index of time series for plotting
+    wavelet : str
+        Type of wavelet from pywt. Possible variants: 
+            haar family: haar
+            db family: db1, db2, db3, db4, db5, db6, db7, db8, db9, db10, db11, db12, db13, db14, db15, db16, db17, db18, db19, db20, db21, db22, db23, db24, db25, db26, db27, db28, db29, db30, db31, db32, db33, db34, db35, db36, db37, db38
+            sym family: sym2, sym3, sym4, sym5, sym6, sym7, sym8, sym9, sym10, sym11, sym12, sym13, sym14, sym15, sym16, sym17, sym18, sym19, sym20
+            coif family: coif1, coif2, coif3, coif4, coif5, coif6, coif7, coif8, coif9, coif10, coif11, coif12, coif13, coif14, coif15, coif16, coif17
+            bior family: bior1.1, bior1.3, bior1.5, bior2.2, bior2.4, bior2.6, bior2.8, bior3.1, bior3.3, bior3.5, bior3.7, bior3.9, bior4.4, bior5.5, bior6.8
+            rbio family: rbio1.1, rbio1.3, rbio1.5, rbio2.2, rbio2.4, rbio2.6, rbio2.8, rbio3.1, rbio3.3, rbio3.5, rbio3.7, rbio3.9, rbio4.4, rbio5.5, rbio6.8
+            dmey family: dmey
+    sigma : float = 0.6
+        Defines the level of noise separation. The higher, the more noise is separated
+    plot_components : bool = False
+        Flag whether the plot of the original, stochastic and deterministic time series is needed
+
+    Returns
+    ----------
+    stochastic_component : array
+        Stochastic component of the time series
+    deterministic_component : array
+        Deterministic component of the time series
+    """
+
+    def neigh_block(details,
+                    n:int, sigma):
+        res = []
+        L0 = int(np.log2(n) // 2)
+        L1 = max(1, L0 // 2)
+        L = L0 + 2 * L1
+
+        def nb_beta(sigma, L, detail):
+            S2 = np.sum(detail ** 2)
+            lmbd = 4.50524 # solution of lmbd - log(lmbd) = 3
+            beta = (1 - lmbd * L * sigma**2 / S2)
+            return max(0, beta)
+        
+        for d in details:
+            d2 = d.copy()
+            for start_b in range(0, len(d2), L0):
+                end_b = min(len(d2), start_b + L0)
+                start_B = start_b - L1
+                end_B = start_B + L
+                if start_B < 0:
+                    end_B -= start_B
+                    start_B = 0
+                elif end_B > len(d2):
+                    start_B -= end_B - len(d2)
+                    end_B = len(d2)
+                assert end_B - start_B == L
+                d2[start_b:end_b] *= nb_beta(sigma, L, d2[start_B:end_B])
+            res.append(d2)
+        return res
+
+    # Check if wavelet is discrete
+    # (because their interfaces are different and backward composition is still implemented only for it)
+    if pywt.DiscreteContinuousWavelet(wavelet_type).family_name not in ['Haar', 'Daubechies', 'Symlets',
+                                                                        'Coiflets', 'Biorthogonal',
+                                                                        'Reverse biorthogonal',
+                                                                        'Discrete Meyer (FIR Approximation)']:
+        raise ValueError(f'Wavelet {wavelet_type} is not discrete')
+
+    # Apply wavelet decomposition based on the discrete or continuous wavelet
+    wavelet = pywt.Wavelet(wavelet_type)
+    coeffs = pywt.dwt(signal, wavelet)
+        
+    # Reconstruct time series
+    approx = coeffs[0]
+    details = coeffs[1:]
+    details_nb = neigh_block(details, len(signal), sigma)
+    deterministic_component = pywt.waverec([approx] + details_nb, wavelet_type)
+    stohastic_component = signal - deterministic_component
+
+    # Plot components if needed
+    if plot_components == True:
+        __plot_components__(signal, t, stohastic_component, deterministic_component)
+
+    return stohastic_component, deterministic_component
